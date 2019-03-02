@@ -2,7 +2,9 @@ package org.hops
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partition, TaskContext}
+import shapeless.ops.function.FnToProduct
 import shapeless.ops.hlist.{IsHCons, Mapper, ZipConst}
+import shapeless.syntax.std.function._
 import shapeless.{HList, Poly1}
 
 import scala.reflect.ClassTag
@@ -25,16 +27,18 @@ object ZipPartitions {
       * Given a non-empty list of RDDs with equal partitioning, zips partitions into a single RDD
       * using a given function.
       */
-    def apply[L <: HList, A0 <: HList, A1 <: HList, R : ClassTag, H <: RDD[_], T <: HList](rdds: L)(f: A1 => Iterator[R])(
+    def apply[L <: HList, A0 <: HList, A1 <: HList, R : ClassTag, H <: RDD[_], T <: HList, I, F](rdds: L)(f: F)(
         implicit ev0: IsHCons.Aux[L, H, T],
         ev1: ZipConst.Aux[(Partition, TaskContext), L, A0],
-        ev2: Mapper.Aux[RddToIterator.type, A0, A1]): RDD[R] = {
+        ev2: Mapper.Aux[RddToIterator.type, A0, A1],
+        ev3: FnToProduct.Aux[F, A1 => I],
+        ev4: I <:< Iterator[R]): RDD[R] = {
 
         val sc = rdds.head.sparkContext
 
         new RDD[R](sc, List.empty) {
             override def compute(split: Partition, context: TaskContext): Iterator[R] = {
-                f(rdds.zipConst((split, context)).map(RddToIterator))
+                f.toProduct(rdds.zipConst((split, context)).map(RddToIterator))
 
             }
 
